@@ -2,7 +2,10 @@
 const { getDefaultConfig } = require('expo/metro-config');
 
 /** @type {import('expo/metro-config').MetroConfig} */
-const config = getDefaultConfig(__dirname);
+const config = getDefaultConfig(__dirname, {
+  // Enable experimental features for Expo Router
+  unstable_enableExpoRouter: true,
+});
 
 config.resolver.resolveRequest = (context, moduleImport, platform) => {
   // Always import the ESM version of all `@firebase/*` packages

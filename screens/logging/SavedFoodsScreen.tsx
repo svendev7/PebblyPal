@@ -22,6 +22,7 @@ import {
   LayoutAnimation,
   UIManager,
   Easing,
+  InteractionManager,
 } from "react-native"
 import { Ionicons, MaterialCommunityIcons, AntDesign } from "@expo/vector-icons" // Using Ionicons for cart
 import { auth } from "../../config/firebase.client"
@@ -47,6 +48,7 @@ import SavedMealsEditScreen from "../editting/SavedMealsEditScreen"
 import Header from "../../components/Header/Header"
 import SearchBar from "../../components/Header/SearchBar"
 import SimpleToast from "../../components/toast/SimpleToast"
+import { useRouter, useLocalSearchParams } from "expo-router"
 
 const { width, height } = Dimensions.get("window")
 
@@ -88,10 +90,14 @@ interface MealItem {
 }
 
 interface SavedFoodsScreenProps {
-  navigation: any // Add proper navigation types later
+  navigation: any // Keep for backwards compatibility
 }
 
 const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
+  // Add router for navigation
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  
   const [activeTab, setActiveTab] = useState("Foods")
   const [searchText, setSearchText] = useState("")
   const [activeFilter, setActiveFilter] = useState("Recent")
@@ -182,43 +188,54 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
     }
   }, [])
 
-  // Add a navigation focus listener to clear cart state and refresh data when returning to this screen
+  // Focus listener to handle params when navigating back
   useEffect(() => {
-    const unsubscribe = navigation.addListener?.('focus', () => {
-      // Clear local cart state immediately using Context
-      contextClearCart(); // Use context clearCart
+    const unsubscribe = navigation.addListener('focus', () => {
+      // Determine if cart should be cleared based on params
+      const shouldClearCart = params?.clearCart === 'true' || params?.mealLogged === 'true';
       
-      // Reset cart items in Firebase without showing loading state
-      const forceClearAndRefreshCart = async () => {
+      if (shouldClearCart) {
+        // Clear cart context immediately (non-blocking)
+        contextClearCart();
+      } else {
+        // Remove console log
+      }
+      
+      // Run heavy operations asynchronously without blocking navigation
+      const handleFocusOperations = async () => {
         try {
           const currentUser = auth.currentUser;
           if (currentUser) {
-            await forceResetAllCartItems(currentUser.uid);
+            // Only force reset items in Firebase if we've successfully logged a meal
+            if (shouldClearCart) {
+              // Do this asynchronously without blocking
+              forceResetAllCartItems(currentUser.uid).catch(console.error);
+            }
             
             // Check for success message explicitly
-            const successMessage = navigation.getParam?.('successMessage');
+            const successMessage = params?.successMessage;
             if (successMessage) {
-              console.log("Success message found:", successMessage);
-              showToast(successMessage, 'success');
-              navigation.setParams?.({successMessage: null});
+              showToast(successMessage.toString(), 'success');
               return; // Skip the rest if we have a direct success message
             }
             
             // Only reload if a food/meal was added or edited
-            if (navigation.getParam?.('foodChanged') || navigation.getParam?.('mealChanged')) {
+            if (params?.foodChanged === 'true' || params?.mealChanged === 'true') {
               // Show a loading indicator in the popup instead of full screen
               showToast("Updating food list...", 'loading');
-              await fetchAllData();
               
-              // Default messages if no custom message is provided
-              if (navigation.getParam?.('foodChanged')) {
-                showToast("Food successfully saved", 'success');
-              } else if (navigation.getParam?.('mealChanged')) {
-                showToast("Meal successfully saved", 'success');
-              }
-              
-              // Clear the params
-              navigation.setParams?.({foodChanged: false, mealChanged: false});
+              // Run fetchAllData asynchronously
+              fetchAllData().then(() => {
+                // Default messages if no custom message is provided
+                if (params?.foodChanged === 'true') {
+                  showToast("Food successfully saved", 'success');
+                } else if (params?.mealChanged === 'true') {
+                  showToast("Meal successfully saved", 'success');
+                }
+              }).catch(error => {
+                console.error("Error fetching data:", error);
+                hideToast();
+              });
             }
           }
         } catch (error) {
@@ -227,7 +244,8 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
         }
       };
       
-      forceClearAndRefreshCart();
+      // Run focus operations without blocking the UI
+      setTimeout(handleFocusOperations, 0);
     });
     
     // Initial data load when the component mounts - show loading only on first mount
@@ -242,7 +260,7 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
         hideToast();
       }
     };
-  }, [navigation, contextClearCart]);
+  }, [navigation, contextClearCart, cartItems, params]);
 
   // We don't need to fetch data when filter/tab changes anymore, as we pre-load all data
   
@@ -1128,8 +1146,8 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
   };
 
   const handleAddFoodPress = () => {
-    // Navigate to the Add Food Options screen
-    navigation.navigate("AddFoodOptions")
+    // Navigate immediately without any delays or heavy operations
+    router.push('/addfoodoptions');
   }
 
   // Function to clear the cart completely (simplified using context)
@@ -1158,9 +1176,8 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
       return
     }
 
-    // Navigate to CustomMealReviewScreen without passing any items or callbacks
-    // The review screen will now pull items directly from CartContext
-    navigation.navigate("CustomMealReview") 
+    // Navigate immediately without any delays
+    router.push('/mealreview');
   }
 
   const handleMealPress = () => {
@@ -1169,8 +1186,8 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
       return // Don't navigate if cart is empty
     }
     
-    // Navigate without passing props, review screen uses context
-    navigation.navigate("CustomMealReview") 
+    // Navigate immediately without any delays
+    router.push('/mealreview');
   }
 
   // Add this state at the top with other states

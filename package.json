@@ -1,7 +1,7 @@
 {
   "name": "pebbly",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "index.js",
   "scripts": {
     "start": "expo start",
     "android": "expo start --android",
@@ -9,19 +9,25 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo/metro-runtime": "^5.0.4",
     "@react-native-async-storage/async-storage": "^2.1.2",
     "@react-native-firebase/app": "^22.1.0",
     "@react-native-firebase/auth": "^22.1.0",
     "@react-native-picker/picker": "^2.11.0",
     "dotenv": "^16.5.0",
     "expo": "~53.0.7",
+    "expo-constants": "^17.1.6",
     "expo-image-picker": "^16.1.4",
+    "expo-linear-gradient": "~14.1.4",
+    "expo-linking": "^7.1.5",
+    "expo-router": "^5.0.7",
     "expo-status-bar": "~2.2.3",
     "firebase": "10.7.1",
     "react": "19.0.0",
-    "react-native": "0.79.2",
-    "react-native-gesture-handler": "^2.25.0",
-    "react-native-safe-area-context": "^5.4.0",
+    "react-native": "^0.79.2",
+    "react-native-gesture-handler": "^2.24.0",
+    "react-native-safe-area-context": "5.4.0",
+    "react-native-screens": "^4.10.0",
     "react-native-svg": "^15.11.2",
     "react-native-toast-message": "^2.3.0"
   },

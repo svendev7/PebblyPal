@@ -106,6 +106,7 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
   const [displayedDaysData, setDisplayedDaysData] = useState<DayData[]>([])
   const [loadedDates, setLoadedDates] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isInitialLoading, setIsInitialLoading] = useState(true)
   const [selectedMeal, setSelectedMeal] = useState<MealData | null>(null)
   const [showMealEdit, setShowMealEdit] = useState(false)
   const [preventFooter, setPreventFooter] = useState(false)
@@ -125,7 +126,7 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
   const refreshCurrentView = () => {
     if (user) {
       // Refresh all loaded dates
-      const promises = loadedDates.map(date => loadMealsForDate(date))
+      const promises = loadedDates.map(date => loadMealsForDate(date, false))
       return Promise.all(promises)
     }
     return Promise.resolve()
@@ -210,7 +211,7 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
   }
 
   // Load meals for a specific date
-  const loadMealsForDate = async (dateString: string) => {
+  const loadMealsForDate = async (dateString: string, isInitial = true) => {
     if (!user) return
 
     try {
@@ -270,7 +271,18 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
       console.error("Error loading meals for date:", error)
       Alert.alert("Error", "Failed to load meals")
     } finally {
-      setIsLoading(false)
+      // For initial loading, add a small delay to ensure a consistent UX
+      if (isInitial && isInitialLoading) {
+        setTimeout(() => {
+          setIsInitialLoading(false)
+          setIsLoading(false)
+        }, 500)
+      } else {
+        // For subsequent data loads, use a small delay to prevent flicker
+        setTimeout(() => {
+          setIsLoading(false)
+        }, 100)
+      }
     }
   }
 
@@ -286,7 +298,7 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
     const previousDate = getPreviousDate(oldestDate)
 
     // Load meals for the previous date
-    loadMealsForDate(previousDate)
+    loadMealsForDate(previousDate, false)
   }
 
   const handleMealPress = (meal: MealData) => {
@@ -482,6 +494,7 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
           onMealPress={handleMealPress}
           onFooterVisibilityChange={handleFooterVisibility}
           canLoadMore={true}
+          isLoading={isInitialLoading}
         />
       </View>
 

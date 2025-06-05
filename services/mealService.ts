@@ -291,7 +291,7 @@ export const getMealsByDate = async (userId: string, date: string): Promise<Meal
       mealsRef,
       where('userId', '==', userId),
       where('date', '==', date),
-      where('isCustom', '==', false)
+      where('isLogged', '==', true)
     );
     const querySnapshot = await getDocs(q);
     // Map and sort by loggedTime desc

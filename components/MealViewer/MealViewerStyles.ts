@@ -348,6 +348,70 @@ export const styles = StyleSheet.create({
       marginTop: 10,
       marginBottom: 10,
       paddingHorizontal: 20,
-  }
+  },
+  
+  // Card flip animation styles
+  flipCardContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
+  flipCardSide: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    backfaceVisibility: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flipCardBack: {
+    // Additional styles for the back side if needed
+  },
+  
+  // Pet screen styles
+  petScreenContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -35,
+    marginBottom: 15,
+  },
+  petScreenTitle: {
+    color: colors.text,
+    fontSize: 28,
+    fontWeight: 'bold',
+  },
+  petScreenSubtitle: {
+    color: colors.text,
+    fontSize: 12,
+    opacity: 0.7,
+    fontWeight: '500',
+    marginTop: 5,
+  },
+  
+  // Toggle styles - Small and top right
+  toggleContainer: {
+    position: 'absolute',
+    top: 8,
+    right: 12,
+    zIndex: 10,
+  },
+  toggleBackground: {
+    width: 30,
+    height: 15,
+    backgroundColor: 'rgba(28, 28, 30, 0.9)',
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  toggleIconWrapper: {
+    width: 10,
+    height: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 

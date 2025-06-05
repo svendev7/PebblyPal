@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Switch,
   Alert,
+  InteractionManager,
 } from "react-native"
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons"
@@ -66,8 +67,17 @@ const SuccessPopup = ({ visible, message, onDismiss }) => {
 };
 
 const MealReviewScreen: React.FC<MealReviewScreenProps> = ({ navigation, route }) => {
+  // Use State to track whether the heavy components have been rendered
+  const [isReady, setIsReady] = useState(false);
+
   // Use Cart Context
   const { cartItems, itemCount, updateQuantity, removeFromCart, clearCart: contextClearCart, totalMacros: contextTotalMacros } = useCart();
+  
+  // Make transition immediate without waiting for InteractionManager
+  useEffect(() => {
+    // Set ready immediately for instant rendering
+    setIsReady(true);
+  }, []);
   
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedCartItemIndex, setSelectedCartItemIndex] = useState<number | null>(null);
@@ -91,36 +101,39 @@ const MealReviewScreen: React.FC<MealReviewScreenProps> = ({ navigation, route }
   // Effect to suggest name based on cartItems (if not disabled)
   useEffect(() => {
     const checkAiPreferenceAndSuggestName = async () => {
-      let userPreference = false;
-      try {
-        if (auth.currentUser) {
-          const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
-          if (userDoc.exists()) {
-            userPreference = userDoc.data().disableAiSuggestions || false;
-            setDisableAiSuggestions(userPreference);
-          }
-        }
-      } catch (error) { 
-        console.error('Error reading AI preference:', error);
+      // Set default meal name if cart has only one item and name is empty (immediate)
+      if (cartItems.length === 1 && !mealName) {
+        setMealName(cartItems[0].name);
+        return; // Return early, don't check AI preferences for single items
       }
       
-      // Suggest name only if AI not disabled, cart has >1 item, and name isn't set
-      if (!userPreference && cartItems.length > 1 && !mealName) {
-          // Convert CartItem[] to FoodItem[] for generateMealName if needed
-          const itemsForSuggestion = cartItems.map(ci => ({ ...ci })); // Simple map for now
-          const suggestion = generateMealName(itemsForSuggestion);
-          setAiMealNameSuggestion(suggestion);
-          setShowAiSuggestionModal(true);
-      }
+      // Run AI preference check asynchronously without blocking
+      setTimeout(async () => {
+        try {
+          let userPreference = false;
+          if (auth.currentUser) {
+            const userDoc = await getDoc(doc(db, "users", auth.currentUser.uid));
+            if (userDoc.exists()) {
+              userPreference = userDoc.data().disableAiSuggestions || false;
+              setDisableAiSuggestions(userPreference);
+            }
+          }
+          
+          // Suggest name only if AI not disabled, cart has >1 item, and name isn't set
+          if (!userPreference && cartItems.length > 1 && !mealName) {
+            // Convert CartItem[] to FoodItem[] for generateMealName if needed
+            const itemsForSuggestion = cartItems.map(ci => ({ ...ci })); // Simple map for now
+            const suggestion = generateMealName(itemsForSuggestion);
+            setAiMealNameSuggestion(suggestion);
+            setShowAiSuggestionModal(true);
+          }
+        } catch (error) { 
+          console.error('Error reading AI preference:', error);
+        }
+      }, 100); // Small delay to not block initial render
     };
 
     checkAiPreferenceAndSuggestName();
-    
-    // Set default meal name if cart has only one item and name is empty
-    if (cartItems.length === 1 && !mealName) {
-      setMealName(cartItems[0].name);
-    }
-    
   }, [cartItems, mealName]);
 
   // Generate an AI meal name
@@ -270,12 +283,6 @@ const MealReviewScreen: React.FC<MealReviewScreenProps> = ({ navigation, route }
       const totalMacros = contextTotalMacros; 
       const currentCartItems = [...cartItems];
 
-      try {
-        await forceResetAllCartItems(auth.currentUser.uid);
-      } catch (clearError) {
-        console.error("Error clearing cart in Firestore (pre-log):", clearError);
-      }
-
       // Format the date in YYYY-MM-DD format for consistency
       const currentDate = new Date().toISOString().split('T')[0];
 
@@ -290,6 +297,7 @@ const MealReviewScreen: React.FC<MealReviewScreenProps> = ({ navigation, route }
         (currentCartItems.length > 0 && currentCartItems[0].name ? 
           currentCartItems[0].name : 'Logged Meal');
 
+      // Save the meal first (this is the main operation)
       await addMeal({
         userId: auth.currentUser.uid,
         mealName: effectiveMealName,
@@ -320,21 +328,24 @@ const MealReviewScreen: React.FC<MealReviewScreenProps> = ({ navigation, route }
         isLogged: true // Ensure this is set to true for the meal viewer
       });
 
+      // Clear the cart in context immediately (instant UI feedback)
       contextClearCart();
       
-      try {
-          await forceResetAllCartItems(auth.currentUser.uid);
-      } catch (clearError) {
-          console.error("Error clearing cart in Firestore (post-log):", clearError);
-      }
+      // Clear cart in Firebase asynchronously (don't wait for it)
+      forceResetAllCartItems(auth.currentUser.uid).catch(error => {
+        console.error("Error clearing cart in Firestore:", error);
+      });
 
       showSuccess(isSavingMeal ? 'Meal Logged and Saved' : 'Meal Logged Successfully');
       
-      setTimeout(() => {
-        if (navigation && typeof navigation.goBack === 'function') {
-          navigation.goBack();
-        }
-      }, 300);
+      // Navigate to home immediately after successful meal logging (no delay)
+      const onMealLogged = route?.params?.onMealLogged;
+      if (onMealLogged && typeof onMealLogged === 'function') {
+        onMealLogged(); // This will navigate to home
+      } else if (navigation && typeof navigation.navigate === 'function') {
+        // Fallback: navigate to home directly
+        navigation.navigate('home');
+      }
 
     } catch (error) {
       console.error(`Error ${isSavingMeal ? 'saving' : 'logging'} meal:`, error);
@@ -646,6 +657,8 @@ const MealReviewScreen: React.FC<MealReviewScreenProps> = ({ navigation, route }
         <Header
           title="Review Meal"
           onBack={() => navigation.goBack()}
+          rightIcon={<Ionicons name="close-outline" size={26} color="#FFFFFF" />}
+          rightIconAction={() => navigation.goBack()}
           containerStyle={styles.headerContainer}
         />
 
@@ -1509,6 +1522,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginLeft: 10,
     fontWeight: '500',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000000', 
   },
 })
 

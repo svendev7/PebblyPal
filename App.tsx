@@ -19,6 +19,7 @@ import Toast from "react-native-toast-message"
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { forceResetAllCartItems } from "./services/mealService"
 import { CartProvider } from "./context/CartContext"
+import "expo-router/entry";
 
 const { width, height } = Dimensions.get("window")
 
