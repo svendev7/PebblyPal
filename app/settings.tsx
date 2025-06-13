@@ -19,8 +19,6 @@ export default function Settings() {
   return (
     <SettingsScreen
       navigate={() => router.back()}
-      updateCustomBackground={updateCustomBackground}
-      customBackground={null} // This should be fetched from state management
     />
   );
 } 

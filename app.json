@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Pebbly",
-    "slug": "Pebbly",
+    "name": "PebblyPal",
+    "slug": "pebblypal",
     "version": "1.0.0",
     "jsEngine": "jsc",
     "orientation": "portrait",
@@ -9,14 +9,16 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
-        "UIViewControllerBasedStatusBarAppearance": "YES"
       }
     },
     "android": {
@@ -29,8 +31,12 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "experiments": {
+      "typedRoutes": true
+    },
     "plugins": [
       "expo-router"
-    ]
+    ],
+    "scheme": "pebblypal"
   }
 }

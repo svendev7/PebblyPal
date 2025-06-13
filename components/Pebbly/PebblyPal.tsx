@@ -7,7 +7,7 @@ interface PebblyPalProps {
 
 export const PebblyPal = ({ style }: PebblyPalProps) => {
   const [isShocked, setIsShocked] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPressedRef = useRef(false);
   const pressStartTimeRef = useRef(0);
   

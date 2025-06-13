@@ -16,9 +16,30 @@ import {
   Alert,
 } from "react-native"
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons"
-import type { Meal } from "../../services/mealService"
+// Removed old service imports - using context/props now
 
 const { width, height } = Dimensions.get("window")
+
+interface Meal {
+  id: string;
+  userId: string;
+  mealName: string;
+  protein: number;
+  carbs: number;
+  fat: number;
+  calories: number;
+  sugar: number;
+  fibers: number;
+  sodium: number;
+  loggedTime: string;
+  date: string;
+  imageUrl?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  isLogged?: boolean;
+  isFavorite?: boolean;
+  isCustom?: boolean;
+}
 
 interface MealEditScreenProps {
   meal: Meal

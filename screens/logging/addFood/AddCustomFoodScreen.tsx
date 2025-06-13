@@ -20,8 +20,9 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons, AntDesign } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useRouter } from 'expo-router';
 import { auth } from '../../../config/firebase.client';
-import { saveCustomFood } from '../../../services/mealService';
+import { useSavedItems } from '../../../context/SavedItemsContext';
 import Header from '../../../components/Header/Header';
 import { NutrientInput } from '../../../components/Inputs/NutrientInput';
 
@@ -51,10 +52,12 @@ interface AddCustomFoodScreenProps {
 }
 
 const AddCustomFoodScreen: React.FC<AddCustomFoodScreenProps> = ({ navigation, route }) => {
+  const router = useRouter();
   const foodToEdit = route?.params?.foodToEdit;
   const isEditing = !!foodToEdit;
   const contentOffset = useRef(new Animated.Value(0)).current;
   const [isLoading, setIsLoading] = useState(false);
+  const { addItem } = useSavedItems();
   
   // Initialize food details
   const [foodDetails, setFoodDetails] = useState<CustomFood>({
@@ -216,9 +219,15 @@ const AddCustomFoodScreen: React.FC<AddCustomFoodScreenProps> = ({ navigation, r
     setIsLoading(true);
     
     try {
+      // Wait for auth to be ready and check current user
       const currentUser = auth.currentUser;
       if (!currentUser) {
-        throw new Error('User not authenticated');
+        Alert.alert(
+          'Authentication Required',
+          'Please log in to save custom foods.',
+          [{ text: 'OK', onPress: () => router.back() }]
+        );
+        return;
       }
       
       // Prepare food data for saving
@@ -239,20 +248,42 @@ const AddCustomFoodScreen: React.FC<AddCustomFoodScreenProps> = ({ navigation, r
         servingSize: parseInt(inputValues.servingSize, 10) || 100
       };
       
-      // Save to Firestore
-      await saveCustomFood(currentUser.uid, foodData);
+      // Save to Firestore using the new SavedItems context
+      await addItem({
+        name: foodData.name,
+        itemType: 'food',
+        protein: foodData.protein,
+        carbs: foodData.carbs,
+        fat: foodData.fat,
+        calories: foodData.calories,
+        sugar: foodData.sugar,
+        fibers: foodData.fibers,
+        sodium: foodData.sodium,
+        servingSize: foodData.servingSize,
+        servingUnit: foodData.servingUnit,
+        imageUrl: foodData.imageUrl || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=400", // Default image if none provided
+        isFavorite: foodData.isFavorite,
+        isUserCreated: true
+      });
       
-      // Navigate back to log items screen and trigger the success message there
-      if (navigation.getParent) {
-        // If this is in a navigator stack
-        navigation.getParent().navigate('addMeal', { 
-          foodChanged: true, 
-          successMessage: `${foodData.name} ${isEditing ? 'updated' : 'added'} successfully!`
-        });
-      } else {
-        // If direct navigation object from App.tsx
-        navigation.save && navigation.save(foodData);
-      }
+      // Show success alert and navigate back to SavedFoodsScreen
+      Alert.alert(
+        'Success',
+        `${foodData.name} ${isEditing ? 'updated' : 'added'} successfully!`,
+        [{ 
+          text: 'OK', 
+          onPress: () => {
+            // Navigate back to SavedFoodsScreen with success params
+            router.push({
+              pathname: '/logmeal',
+              params: { 
+                foodChanged: 'true',
+                successMessage: `${foodData.name} saved successfully!`
+              }
+            });
+          }
+        }]
+      );
       
     } catch (error) {
       console.error('Error saving food:', error);
@@ -267,22 +298,16 @@ const AddCustomFoodScreen: React.FC<AddCustomFoodScreenProps> = ({ navigation, r
   };
 
   return (
-    <Modal
-      animationType="slide"
-      transparent={true}
-      visible={true}
-      onRequestClose={() => navigation.goBack()}
-      statusBarTranslucent
-    >
+    <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.centeredView}
+        style={styles.container}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.modalView}>
+          <View style={styles.container}>
             <Header
               title={isEditing ? 'Edit Food' : 'Add Custom Food'}
-              onBack={() => navigation.goBack()}
+              onBack={() => router.back()}
               rightIcon={
                 <AntDesign 
                   name={foodDetails.isFavorite ? "star" : "staro"} 
@@ -479,11 +504,15 @@ const AddCustomFoodScreen: React.FC<AddCustomFoodScreenProps> = ({ navigation, r
           </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
-    </Modal>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#000000",
+  },
   centeredView: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.7)",

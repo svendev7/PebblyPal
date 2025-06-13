@@ -39,21 +39,13 @@ export default function CustomFood() {
       savedCallback.current(food);
     }
     
-    // Return to the food options or log meal screen
-    if (params.fromScreen === 'addfoodoptions') {
-      router.push('/addfoodoptions');
-    } else {
-      router.push('/logmeal');
-    }
+    // Use proper back navigation
+    router.back();
   };
   
   const handleGoBack = () => {
-    // Use the fromScreen param to determine where to go back to
-    if (params.fromScreen === 'addfoodoptions') {
-      router.push('/addfoodoptions');
-    } else {
-      router.push('/logmeal');
-    }
+    // Use proper back navigation
+    router.back();
   };
   
   return (

@@ -26,21 +26,7 @@ import {
 } from "react-native"
 import { Ionicons, MaterialCommunityIcons, AntDesign } from "@expo/vector-icons" // Using Ionicons for cart
 import { auth } from "../../config/firebase.client"
-import {
-  getRecentMealsByUserId,
-  getFavoriteMealsByUserId,
-  getSavedMealsByUserId,
-  updateFavoriteStatus,
-  deleteUserFood,
-  getUserFoodsByType,
-  updateFoodCartStatus,
-  addMeal,
-  deleteMeal,
-  clearAllCartItems,
-  forceResetAllCartItems,
-  saveCustomFood,
-  updateMeal
-} from "../../services/mealService"
+import { useSavedItems } from "../../context/SavedItemsContext"
 import { Swipeable, GestureHandlerRootView } from "react-native-gesture-handler"
 import { useCart } from "../../context/CartContext"
 import FoodEditScreen from "../editting/FoodEditScreen"
@@ -98,6 +84,9 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
   const router = useRouter();
   const params = useLocalSearchParams();
   
+  // Use SavedItems Context
+  const { foods, meals, favorites, recentItems, loading, error, deleteItem, toggleFavorite, refreshData, updateItem } = useSavedItems();
+  
   const [activeTab, setActiveTab] = useState("Foods")
   const [searchText, setSearchText] = useState("")
   const [activeFilter, setActiveFilter] = useState("Recent")
@@ -110,27 +99,11 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
   const tabIndicatorPosition = useRef(new Animated.Value(0)).current
   const filterIndicatorPosition = useRef(new Animated.Value(0)).current
   
-  // Add states for Firestore data - now organizing by filter type
-  const [foodItems, setFoodItems] = useState<{[filter: string]: FoodItem[]}>({
-    Recent: [],
-    Created: [],
-    Favorites: []
-  })
-  const [mealItems, setMealItems] = useState<{[filter: string]: MealItem[]}>({
-    Recent: [],
-    Created: [],
-    Favorites: []
-  })
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  
   // Toast state
   const [toastVisible, setToastVisible] = useState(false)
   const [toastMessage, setToastMessage] = useState("")
   const [toastType, setToastType] = useState<'success' | 'error' | 'info' | 'loading'>('success')
 
-  // Add state for tracking favorite items
-  const [favoriteItems, setFavoriteItems] = useState<{ [key: string]: boolean }>({})
   const swipeableRefs = useRef<{ [key: string]: Swipeable | null }>({})
 
   // Get cart context
@@ -145,6 +118,8 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
   // Add state for delete confirmation modal
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [itemToDelete, setItemToDelete] = useState<FoodItem | MealItem | null>(null)
+  
+
   
   // Show toast message
   const showToast = (message: string, type: 'success' | 'error' | 'info' | 'loading' = 'success') => {
@@ -206,11 +181,7 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
         try {
           const currentUser = auth.currentUser;
           if (currentUser) {
-            // Only force reset items in Firebase if we've successfully logged a meal
-            if (shouldClearCart) {
-              // Do this asynchronously without blocking
-              forceResetAllCartItems(currentUser.uid).catch(console.error);
-            }
+            // Cart clearing is now handled by context, no Firebase clearing needed
             
             // Check for success message explicitly
             const successMessage = params?.successMessage;
@@ -221,21 +192,13 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
             
             // Only reload if a food/meal was added or edited
             if (params?.foodChanged === 'true' || params?.mealChanged === 'true') {
-              // Show a loading indicator in the popup instead of full screen
-              showToast("Updating food list...", 'loading');
-              
-              // Run fetchAllData asynchronously
-              fetchAllData().then(() => {
-                // Default messages if no custom message is provided
-                if (params?.foodChanged === 'true') {
-                  showToast("Food successfully saved", 'success');
-                } else if (params?.mealChanged === 'true') {
-                  showToast("Meal successfully saved", 'success');
-                }
-              }).catch(error => {
-                console.error("Error fetching data:", error);
-                hideToast();
-              });
+              // Don't show loading popup or refresh data - context auto-updates
+              // Just show success message immediately
+              if (params?.foodChanged === 'true') {
+                showToast("Food successfully saved", 'success');
+              } else if (params?.mealChanged === 'true') {
+                showToast("Meal successfully saved", 'success');
+              }
             }
           }
         } catch (error) {
@@ -248,9 +211,6 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
       setTimeout(handleFocusOperations, 0);
     });
     
-    // Initial data load when the component mounts - show loading only on first mount
-    fetchAllData();
-    
     // Clean up the listener on unmount
     return () => {
       if (unsubscribe) {
@@ -261,72 +221,6 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
       }
     };
   }, [navigation, contextClearCart, cartItems, params]);
-
-  // We don't need to fetch data when filter/tab changes anymore, as we pre-load all data
-  
-  // New function to fetch all data at once
-  const fetchAllData = async () => {
-    try {
-      setLoading(true);
-      const currentUser = auth.currentUser;
-      
-      if (!currentUser) {
-        throw new Error("User not authenticated");
-      }
-      
-      // Fetch all foods for different filters in parallel
-      const [recentFoods, favoriteFoods, createdFoods, recentMeals, favoriteMeals, savedMeals] = await Promise.all([
-        getUserFoodsByType(currentUser.uid, "recent"),
-        getUserFoodsByType(currentUser.uid, "favorite"),
-        getUserFoodsByType(currentUser.uid, "created"),
-        getRecentMealsByUserId(currentUser.uid),
-        getFavoriteMealsByUserId(currentUser.uid),
-        getSavedMealsByUserId(currentUser.uid)
-      ]);
-      
-      // Transform and set meals in state organized by filter
-      const transformedMeals = {
-        Recent: recentMeals.map(transformMeal('Recent')),
-        Favorites: favoriteMeals.map(transformMeal('Favorites')),
-        Created: savedMeals.map(transformMeal('Created'))
-      };
-      
-      // Transform and set foods in state organized by filter
-      const transformedFoods = {
-        Recent: recentFoods.map(transformFood('Recent')),
-        Favorites: favoriteFoods.map(transformFood('Favorites')),
-        Created: createdFoods.map(transformFood('Created'))
-      };
-      
-      // Update favorites state
-      const newFavorites = {};
-      
-      // Add favorites from meals
-      [...recentMeals, ...favoriteMeals, ...savedMeals].forEach(meal => {
-        if (meal.isFavorite) {
-          newFavorites[meal.id] = true;
-        }
-      });
-      
-      // Add favorites from foods
-      [...recentFoods, ...favoriteFoods, ...createdFoods].forEach(food => {
-        if (food.isFavorite) {
-          newFavorites[food.id] = true;
-        }
-      });
-      
-      // Update our local state
-      setFavoriteItems(newFavorites);
-      setMealItems(transformedMeals);
-      setFoodItems(transformedFoods);
-      setError(null);
-    } catch (err) {
-      console.error("Error fetching meals and foods:", err);
-      setError("Failed to load items");
-    } finally {
-      setLoading(false);
-    }
-  };
   
   // Helper functions to transform meals and foods
   const transformMeal = (filter: "Recent" | "Created" | "Favorites") => (meal: any): MealItem => ({
@@ -603,52 +497,22 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
 
   // Function to handle favoriting an item
   const handleFavoriteItem = async (itemId: string) => {
-    // Get current item (either food or meal)
-    const item = [...foodItems.Recent, ...foodItems.Created, ...foodItems.Favorites, ...mealItems.Recent, ...mealItems.Created, ...mealItems.Favorites].find(item => item.id === itemId)
-    
-    if (!item) {
-      console.error("Could not find item to favorite:", itemId)
-      return
-    }
-    
-    // Optimistically update UI
-    const newStatus = !favoriteItems[itemId]
-    setFavoriteItems(prev => ({
-      ...prev,
-      [itemId]: newStatus
-    }))
-
-    // Close the swipeable after action
-    if (swipeableRefs.current[itemId]) {
-      swipeableRefs.current[itemId]?.close()
-    }
-    
     try {
-      // Update in backend
-      const currentUser = auth.currentUser
-      if (!currentUser) throw new Error("User not authenticated")
+      // Find the item to get current status
+      const item = [...foods, ...meals].find(item => item.id === itemId);
+      if (!item) return;
       
-      await updateFavoriteStatus(
-        currentUser.uid,
-        itemId,
-        newStatus,
-        activeTab === "Foods" ? "food" : "meal"
-      )
+      const newStatus = !item.isFavorite;
+      
+      // Update using context
+      await toggleFavorite(itemId, newStatus);
+      
+      showToast(newStatus ? 'Added to favorites' : 'Removed from favorites', 'success');
     } catch (error) {
-      // Revert UI on error
-      console.error("Error updating favorite status:", error)
-      setFavoriteItems(prev => ({
-        ...prev,
-        [itemId]: !newStatus
-      }))
-      
-      Alert.alert(
-        "Error",
-        "Failed to update favorite status. Please try again.",
-        [{ text: "OK" }]
-      )
+      console.error('Error updating favorite status:', error);
+      showToast('Failed to update favorite status', 'error');
     }
-  }
+  };
 
   // Function to confirm deletion
   const confirmDeleteItem = (item: FoodItem | MealItem) => {
@@ -679,34 +543,14 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
       // Close the confirmation modal
       setShowDeleteConfirm(false)
       
-      // Remove from local UI state immediately
-      if (activeTab === "Foods") {
-        setFoodItems(prev => ({
-          ...prev,
-          Recent: prev.Recent.filter(f => f.id !== itemToDelete.id),
-          Created: prev.Created.filter(f => f.id !== itemToDelete.id),
-          Favorites: prev.Favorites.filter(f => f.id !== itemToDelete.id)
-        }))
-      } else {
-        setMealItems(prev => ({
-          ...prev,
-          Recent: prev.Recent.filter(f => f.id !== itemToDelete.id),
-          Created: prev.Created.filter(f => f.id !== itemToDelete.id),
-          Favorites: prev.Favorites.filter(f => f.id !== itemToDelete.id)
-        }))
-      }
+      // Context handles UI state updates automatically
       
       // Find corresponding cart item(s) by originalItemId and remove from context cart
       const cartItemsToRemove = cartItems.filter(ci => ci.originalItemId === itemToDelete.id)
       cartItemsToRemove.forEach(ci => removeFromCart(ci.id)) // Use context remove
 
-      // Delete from Firestore based on current tab
-      if (activeTab === "Foods") {
-        // No need to update cart status first, just delete
-        await deleteUserFood(currentUser.uid, itemToDelete.id, 'food')
-      } else {
-        await deleteMeal(itemToDelete.id)
-      }
+      // Delete using context (already called above)
+      // await deleteItem(itemToDelete.id) - already called
       
       // Show success message
       showToast("Item deleted successfully", 'success')
@@ -714,8 +558,7 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
     } catch (error) {
       console.error("Error deleting item:", error)
       showToast("Failed to delete item", 'error')
-      // Optionally re-fetch data on error to sync UI
-      fetchAllData()
+      // Context handles data syncing automatically
     } finally {
       setItemToDelete(null)
     }
@@ -780,7 +623,7 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
       extrapolate: "clamp",
     })
 
-    const isFavorite = favoriteItems[item.id]
+    const isFavorite = item.isFavorite
 
     return (
       <Animated.View
@@ -898,7 +741,7 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
                 <Text style={styles.itemName} numberOfLines={1} ellipsizeMode="tail">
                   {item.name}
                 </Text>
-                {favoriteItems[item.id] && (
+                {item.isFavorite && (
                   <AntDesign name="star" size={16} color="#FFD700" style={styles.favoriteIcon} />
                 )}
                 <TouchableOpacity 
@@ -983,34 +826,113 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
     )
   }
 
+  // Helper functions to transform context items to component interfaces
+  const transformContextItemToFoodItem = (item: any): FoodItem => ({
+    id: item.id,
+    name: item.name,
+    protein: item.protein,
+    carbs: item.carbs,
+    fat: item.fat,
+    calories: item.calories,
+    sodium: item.sodium || 0,
+    sugar: item.sugar || 0,
+    fibers: item.fibers || 0,
+    type: activeFilter as "Recent" | "Created" | "Favorites",
+    isFavorite: item.isFavorite || false,
+    servingSize: item.servingSize,
+    servingUnit: item.servingUnit || 'g',
+    imageUrl: item.imageUrl,
+  });
+  
+  const transformContextItemToMealItem = (item: any): MealItem => ({
+    id: item.id,
+    name: item.name,
+    protein: item.protein,
+    carbs: item.carbs,
+    fat: item.fat,
+    calories: item.calories,
+    sodium: item.sodium || 0,
+    sugar: item.sugar || 0,
+    fibers: item.fibers || 0,
+    type: activeFilter as "Recent" | "Created" | "Favorites",
+    isFavorite: item.isFavorite || false,
+    servingSize: item.servingSize,
+    servingUnit: item.servingUnit || 'serving',
+    imageUrl: item.imageUrl,
+    isUserCreated: item.isUserCreated || false,
+    userId: item.userId,
+  });
+
   // Create a new renderContent function for state handling, doesn't return UI
-  const getContentData = (): { data: (FoodItem | MealItem)[]; loading: boolean; error: string | null } => {
-    if (loading && (foodItems.Recent.length === 0 && mealItems.Recent.length === 0)) {
-      return { data: [], loading: true, error: null };
+  // Removed getContentData function - using displayedItems directly
+
+  // Memoize filtered list data for performance - optimized to prevent flicker
+  const displayedItems = useMemo(() => {
+    // Return empty array when loading to prevent flicker
+    if (loading) {
+      return [];
     }
     
-    if (error) {
-      return { data: [], loading: false, error: error };
+    // Get base data from context based on active tab and filter
+    let baseData: (FoodItem | MealItem)[] = [];
+    
+    try {
+      if (activeTab === "Foods") {
+        switch (activeFilter) {
+          case "Recent":
+            baseData = (recentItems || [])
+              .filter(item => item?.itemType === 'food')
+              .map(transformContextItemToFoodItem);
+            break;
+          case "Favorites":
+            baseData = (favorites || [])
+              .filter(item => item?.itemType === 'food')
+              .map(transformContextItemToFoodItem);
+            break;
+          case "Created":
+            baseData = (foods || [])
+              .filter(item => item?.isUserCreated)
+              .map(transformContextItemToFoodItem);
+            break;
+          default:
+            baseData = (foods || []).map(transformContextItemToFoodItem);
+        }
+      } else {
+        switch (activeFilter) {
+          case "Recent":
+            baseData = (recentItems || [])
+              .filter(item => item?.itemType === 'meal')
+              .map(transformContextItemToMealItem);
+            break;
+          case "Favorites":
+            baseData = (favorites || [])
+              .filter(item => item?.itemType === 'meal')
+              .map(transformContextItemToMealItem);
+            break;
+          case "Created":
+            baseData = (meals || [])
+              .filter(item => item?.isUserCreated)
+              .map(transformContextItemToMealItem);
+            break;
+          default:
+            baseData = (meals || []).map(transformContextItemToMealItem);
+        }
+      }
+
+      // Apply search filter
+      if (searchText.trim()) {
+        const searchLower = searchText.toLowerCase().trim();
+        return baseData.filter((item) => 
+          item?.name?.toLowerCase().includes(searchLower)
+        );
+      }
+
+      return baseData;
+    } catch (error) {
+      console.error('Error filtering displayed items:', error);
+      return [];
     }
-
-    // Use the correct items based on active tab and filter
-    const itemsToDisplay: (FoodItem | MealItem)[] = activeTab === "Foods" 
-      ? foodItems[activeFilter] || []
-      : mealItems[activeFilter] || [];
-
-    const filteredItems = itemsToDisplay.filter((item) => {
-      const nameMatch = item.name.toLowerCase().includes(searchText.toLowerCase())
-      return nameMatch
-    });
-
-    return { data: filteredItems, loading: false, error: null };
-  }
-
-  // Memoize filtered list data for performance
-  const displayedItems = useMemo(() => {
-    const { data } = getContentData();
-    return data;
-  }, [activeTab, activeFilter, searchText, foodItems, mealItems]);
+  }, [activeTab, activeFilter, searchText, foods, meals, favorites, recentItems, loading]);
 
   // Create a rendering function for list header
   const renderListHeader = () => {
@@ -1087,19 +1009,28 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
     );
   };
 
-  // Create List Empty Component
+  // Create List Empty Component - fixed to prevent flicker
   const ListEmptyComponent = () => {
-    const { loading, error } = getContentData();
-    
+    // Show loading indicator when loading
     if (loading) {
       return (
-        <View style={styles.loadingContainer}>
+        <View style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          paddingTop: 60,
+          height: 200,
+        }}>
           <ActivityIndicator size="large" color="#3E92CC" />
-          <Text style={styles.loadingText}>Loading...</Text>
+          <Text style={{
+            color: "#FFFFFF",
+            fontSize: 16,
+            marginTop: 10,
+          }}>Loading...</Text>
         </View>
       );
     }
-    
+
     if (error) {
       return (
         <View style={{
@@ -1116,7 +1047,7 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
             marginVertical: 10,
             paddingHorizontal: 20,
           }}>{error}</Text>
-          <TouchableOpacity onPress={fetchAllData} style={{
+          <TouchableOpacity onPress={refreshData} style={{
             backgroundColor: "#3E92CC",
             paddingVertical: 8,
             paddingHorizontal: 16,
@@ -1146,7 +1077,7 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
   };
 
   const handleAddFoodPress = () => {
-    // Navigate immediately without any delays or heavy operations
+    // Navigate with proper transition
     router.push('/addfoodoptions');
   }
 
@@ -1155,18 +1086,6 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
     
     // Clear context state immediately
     contextClearCart(); // Call context clearCart
-    
-    // Update Firebase to mark foods as not in cart
-    try {
-      const currentUser = auth.currentUser;
-      if (currentUser) {
-        await forceResetAllCartItems(currentUser.uid);
-        // Optionally re-fetch data after clearing backend state
-        // fetchAllData(); // Consider if needed - focus listener might handle this
-      }
-    } catch (error) {
-      console.error("Error clearing cart in Firebase:", error);
-    }
   }, [contextClearCart]); // Dependency on contextClearCart
 
   const handleContinuePress = () => {
@@ -1240,64 +1159,30 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
     }).start()
   }, [showScrollToTop])
 
-  // Replace handleSaveFood function
+  // Replace handleSaveFood function with context-based version
   const handleSaveFood = async (updatedFood: FoodItem) => {
     try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error("User not authenticated");
-      
       // Show saving feedback
       showToast("Saving food...", 'loading');
       
-      // Save to Firebase using saveCustomFood function
-      await saveCustomFood(currentUser.uid, {
-        ...updatedFood,
-        // Make sure these fields are properly set
-        id: updatedFood.id,
-        isUserCreated: true
+      // Update using context
+      await updateItem(updatedFood.id, {
+        name: updatedFood.name,
+        protein: updatedFood.protein,
+        carbs: updatedFood.carbs,
+        fat: updatedFood.fat,
+        calories: updatedFood.calories,
+        sugar: updatedFood.sugar || 0,
+        fibers: updatedFood.fibers || 0,
+        sodium: updatedFood.sodium || 0,
+        servingSize: updatedFood.servingSize,
+        servingUnit: updatedFood.servingUnit,
+        isFavorite: updatedFood.isFavorite,
+        imageUrl: updatedFood.imageUrl,
       });
       
       // Close the edit screen
       setShowFoodEdit(false);
-      
-      // Update both Created and Favorites filters if applicable
-      const newFoodItems = {...foodItems};
-      
-      // Add or update in Created list
-      const createdIndex = newFoodItems.Created.findIndex(f => f.id === updatedFood.id);
-      if (createdIndex >= 0) {
-        newFoodItems.Created[createdIndex] = {...updatedFood, type: "Created"};
-      } else {
-        newFoodItems.Created.push({...updatedFood, type: "Created"});
-      }
-      
-      // Update in Favorites list if it's a favorite
-      if (updatedFood.isFavorite) {
-        const favIndex = newFoodItems.Favorites.findIndex(f => f.id === updatedFood.id);
-        if (favIndex >= 0) {
-          newFoodItems.Favorites[favIndex] = {...updatedFood, type: "Favorites"};
-        } else {
-          newFoodItems.Favorites.push({...updatedFood, type: "Favorites"});
-        }
-      } else {
-        // Remove from favorites if it was un-favorited
-        newFoodItems.Favorites = newFoodItems.Favorites.filter(f => f.id !== updatedFood.id);
-      }
-      
-      // Update Recent list if it exists there
-      const recentIndex = newFoodItems.Recent.findIndex(f => f.id === updatedFood.id);
-      if (recentIndex >= 0) {
-        newFoodItems.Recent[recentIndex] = {...updatedFood, type: "Recent"};
-      }
-      
-      // Update state
-      setFoodItems(newFoodItems);
-      
-      // Update favorite state
-      setFavoriteItems(prev => ({
-        ...prev,
-        [updatedFood.id]: updatedFood.isFavorite
-      }));
       
       // Show success popup
       showToast('Food Successfully Updated', 'success');
@@ -1308,35 +1193,17 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
     }
   };
 
-  // Replace handleDeleteFood function
+  // Replace handleDeleteFood function with context-based version
   const handleDeleteFood = async (foodId: string) => {
     try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error("User not authenticated");
-      
       // Show deleting feedback
       showToast("Deleting food...", 'loading');
       
-      // Delete from Firebase
-      await deleteUserFood(currentUser.uid, foodId, "food");
+      // Delete using context
+      await deleteItem(foodId);
       
       // Close the edit screen
       setShowFoodEdit(false);
-      
-      // Remove from all filter lists
-      setFoodItems(prev => ({
-        ...prev,
-        Recent: prev.Recent.filter(f => f.id !== foodId),
-        Created: prev.Created.filter(f => f.id !== foodId),
-        Favorites: prev.Favorites.filter(f => f.id !== foodId)
-      }));
-      
-      // Remove from favorites
-      setFavoriteItems(prev => {
-        const newFavorites = {...prev};
-        delete newFavorites[foodId];
-        return newFavorites;
-      });
       
       // Show success message
       showToast('Food Deleted', 'success');
@@ -1350,17 +1217,12 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
   // Add these new functions for handling meal saving and deletion
   const handleSaveMeal = async (updatedMeal: MealItem) => {
     try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error("User not authenticated");
-      
       // Show saving feedback
       showToast("Saving meal...", 'loading');
       
-      // Convert MealItem to Meal format
-      const mealToSave = {
-        id: updatedMeal.id,
-        userId: currentUser.uid,
-        mealName: updatedMeal.name,
+      // Update using context
+      await updateItem(updatedMeal.id, {
+        name: updatedMeal.name,
         protein: updatedMeal.protein,
         carbs: updatedMeal.carbs,
         fat: updatedMeal.fat,
@@ -1372,55 +1234,10 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
         servingUnit: updatedMeal.servingUnit,
         isFavorite: updatedMeal.isFavorite,
         imageUrl: updatedMeal.imageUrl,
-        isCustom: true,
-        isUserCreated: true,
-        updatedAt: new Date() as any
-      };
-      
-      // Update in Firebase
-      await updateMeal(updatedMeal.id, mealToSave);
+      });
       
       // Close the edit screen
       setShowMealEdit(false);
-      
-      // Update both Created and Favorites filters if applicable
-      const newMealItems = {...mealItems};
-      
-      // Add or update in Created list
-      const createdIndex = newMealItems.Created.findIndex(m => m.id === updatedMeal.id);
-      if (createdIndex >= 0) {
-        newMealItems.Created[createdIndex] = {...updatedMeal, type: "Created"};
-      } else {
-        newMealItems.Created.push({...updatedMeal, type: "Created"});
-      }
-      
-      // Update in Favorites list if it's a favorite
-      if (updatedMeal.isFavorite) {
-        const favIndex = newMealItems.Favorites.findIndex(m => m.id === updatedMeal.id);
-        if (favIndex >= 0) {
-          newMealItems.Favorites[favIndex] = {...updatedMeal, type: "Favorites"};
-        } else {
-          newMealItems.Favorites.push({...updatedMeal, type: "Favorites"});
-        }
-      } else {
-        // Remove from favorites if it was un-favorited
-        newMealItems.Favorites = newMealItems.Favorites.filter(m => m.id !== updatedMeal.id);
-      }
-      
-      // Update Recent list if it exists there
-      const recentIndex = newMealItems.Recent.findIndex(m => m.id === updatedMeal.id);
-      if (recentIndex >= 0) {
-        newMealItems.Recent[recentIndex] = {...updatedMeal, type: "Recent"};
-      }
-      
-      // Update state
-      setMealItems(newMealItems);
-      
-      // Update favorite state
-      setFavoriteItems(prev => ({
-        ...prev,
-        [updatedMeal.id]: updatedMeal.isFavorite
-      }));
       
       // Show success popup
       showToast('Meal Successfully Updated', 'success');
@@ -1433,32 +1250,14 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
 
   const handleDeleteMeal = async (mealId: string) => {
     try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) throw new Error("User not authenticated");
-      
       // Show deleting feedback
       showToast("Deleting meal...", 'loading');
       
-      // Delete from Firebase
-      await deleteMeal(mealId);
+      // Delete using context
+      await deleteItem(mealId);
       
       // Close the edit screen
       setShowMealEdit(false);
-      
-      // Remove from all filter lists
-      setMealItems(prev => ({
-        ...prev,
-        Recent: prev.Recent.filter(m => m.id !== mealId),
-        Created: prev.Created.filter(m => m.id !== mealId),
-        Favorites: prev.Favorites.filter(m => m.id !== mealId)
-      }));
-      
-      // Remove from favorites
-      setFavoriteItems(prev => {
-        const newFavorites = {...prev};
-        delete newFavorites[mealId];
-        return newFavorites;
-      });
       
       // Show success message
       showToast('Meal Deleted', 'success');
@@ -1494,30 +1293,26 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
           
         {/* Using the new SharedHeader component */}
         <Header
-          title="Log Items"
-          onBack={() => navigation.goBack()}
+          title="Saved Foods"
+          onBack={() => router.back()}
           rightIcon={
-            <View>
-              <MaterialCommunityIcons name="silverware-fork-knife" size={24} color="#FFFFFF" />
-              {itemCount > 0 && (
-                <View style={styles.mealBadge}>
-                  <Text style={styles.mealBadgeText}>{itemCount}</Text>
+            cartItems.length > 0 ? (
+              <View style={styles.cartIconContainer}>
+                <MaterialCommunityIcons name="cart" size={24} color="#FFFFFF" />
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>{itemCount}</Text>
                 </View>
-              )}
-            </View>
+              </View>
+            ) : (
+              <MaterialCommunityIcons name="cart-outline" size={24} color="#FFFFFF" />
+            )
           }
-          rightIconAction={handleMealPress}
-          showSearch={!searchBarSticky}
-          searchComponent={
-            <SearchBar
-              value={searchText}
-              onChangeText={setSearchText}
-            />
-          }
+          rightIconAction={handleContinuePress}
         />
 
         {/* Main Content Area */}
         {renderListHeader()}
+        
         <View style={styles.listsWrapper}>
           {/* Recent Items */}
           <View 
@@ -1528,12 +1323,12 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
           >
             <FlatList
               ref={recentListRef}
-              data={activeTab === 'Foods' ? foodItems.Recent : mealItems.Recent}
+              data={activeFilter === 'Recent' ? displayedItems : []}
               onScroll={handleScroll}
               scrollEventThrottle={16}
               renderItem={renderItem}
               keyExtractor={(item) => item.id}
-              ListEmptyComponent={ListEmptyComponent}
+              ListEmptyComponent={activeFilter === 'Recent' ? ListEmptyComponent : null}
               contentContainerStyle={styles.scrollViewContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
@@ -1555,12 +1350,12 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
           >
             <FlatList
               ref={createdListRef}
-              data={activeTab === 'Foods' ? foodItems.Created : mealItems.Created}
+              data={activeFilter === 'Created' ? displayedItems : []}
               onScroll={handleScroll}
               scrollEventThrottle={16}
               renderItem={renderItem}
               keyExtractor={(item) => item.id}
-              ListEmptyComponent={ListEmptyComponent}
+              ListEmptyComponent={activeFilter === 'Created' ? ListEmptyComponent : null}
               contentContainerStyle={styles.scrollViewContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
@@ -1582,12 +1377,12 @@ const SavedFoodsScreen: React.FC<SavedFoodsScreenProps> = ({ navigation }) => {
           >
             <FlatList
               ref={favoritesListRef}
-              data={activeTab === 'Foods' ? foodItems.Favorites : mealItems.Favorites}
+              data={activeFilter === 'Favorites' ? displayedItems : []}
               onScroll={handleScroll}
               scrollEventThrottle={16}
               renderItem={renderItem}
               keyExtractor={(item) => item.id}
-              ListEmptyComponent={ListEmptyComponent}
+              ListEmptyComponent={activeFilter === 'Favorites' ? ListEmptyComponent : null}
               contentContainerStyle={styles.scrollViewContent}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
@@ -2288,6 +2083,24 @@ const styles = StyleSheet.create({
   },
   listsWrapper: {
     flex: 1,
+  },
+  cartIconContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  cartBadge: {
+    backgroundColor: "#FF3B30",
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: 5,
+  },
+  cartBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "bold",
   },
 })
 

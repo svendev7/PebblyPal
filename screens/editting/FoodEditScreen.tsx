@@ -18,7 +18,7 @@ import {
 import { MaterialCommunityIcons, Ionicons, AntDesign } from "@expo/vector-icons"
 import * as ImagePicker from 'expo-image-picker'
 import { auth } from "../../config/firebase.client"
-import { updateFavoriteStatus, deleteUserFood } from "../../services/mealService"
+// Removed old service imports - using context/props now
 
 const { width, height } = Dimensions.get("window")
 
@@ -145,33 +145,12 @@ const FoodEditScreen: React.FC<FoodEditScreenProps> = ({ food, onClose, onSave, 
     )
   }
   
-  const handleToggleFavorite = async () => {
-    try {
-      // Update locally first (optimistic UI update)
-      setEditedFood(prev => ({
-        ...prev,
-        isFavorite: !prev.isFavorite
-      }))
-      
-      // Update in backend
-      const currentUser = auth.currentUser
-      if (!currentUser) throw new Error("User not authenticated")
-      
-      await updateFavoriteStatus(
-        currentUser.uid,
-        food.id,
-        !editedFood.isFavorite,
-        "food"
-      )
-    } catch (error) {
-      // Revert on error
-      setEditedFood(prev => ({
-        ...prev,
-        isFavorite: !prev.isFavorite
-      }))
-      
-      console.error("Error updating favorite status:", error)
-    }
+  const handleToggleFavorite = () => {
+    // Simply update locally - parent component will handle persistence
+    setEditedFood(prev => ({
+      ...prev,
+      isFavorite: !prev.isFavorite
+    }))
   }
 
   const handleInputChange = (field: keyof FoodItem, value: string) => {

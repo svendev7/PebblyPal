@@ -1,8 +1,8 @@
 import { StyleSheet, View } from 'react-native';
 import MealReviewScreen from '../screens/logging/cart/MealReviewScreen';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
-import { forceResetAllCartItems } from '../services/mealService';
 import { useAuth } from '../hooks/useAuth';
+import { useCart } from '../context/CartContext';
 import { Ionicons } from "@expo/vector-icons";
 import Header from '../components/Header/Header';
 
@@ -10,6 +10,7 @@ export default function MealReview() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const { user } = useAuth();
+  const { clearCart } = useCart();
   
   // This code is now redundant as we're using CartContext directly
   // but keeping for backward compatibility
@@ -23,9 +24,8 @@ export default function MealReview() {
   }
   
   const forceClearCart = () => {
-    if (user) {
-      forceResetAllCartItems(user.uid);
-    }
+    // Use new cart context instead of old service
+    clearCart();
     // Navigate to home with proper expo router transition
     router.push({
       pathname: '/',
@@ -43,18 +43,29 @@ export default function MealReview() {
       <MealReviewScreen
         navigation={{
           navigate: (screen, params = {}) => {
-            // Fix the toLowerCase error by checking if screen is a string and exists
+            // Use known routes only to avoid type errors
             if (typeof screen === 'string' && screen) {
-              router.push({
-                pathname: `/${screen.toLowerCase()}`,
-                params: params
-              });
+              switch(screen.toLowerCase()) {
+                case 'home':
+                  router.push('/');
+                  break;
+                case 'logmeal':
+                  router.push('/logmeal');
+                  break;
+                default:
+                  console.warn('Unknown navigation screen:', screen);
+                  router.push('/');
+              }
             } else if (typeof screen === 'object' && screen?.name) {
               // Handle object-style navigation
-              router.push({
-                pathname: `/${screen.name.toLowerCase()}`,
-                params: screen.params || {}
-              });
+              switch(screen.name.toLowerCase()) {
+                case 'home':
+                  router.push('/');
+                  break;
+                default:
+                  console.warn('Unknown navigation screen object:', screen);
+                  router.push('/');
+              }
             } else {
               // Default to home if screen is invalid
               console.warn('Invalid navigation screen parameter:', screen);

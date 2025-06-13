@@ -28,7 +28,7 @@ const SimpleToast: React.FC<SimpleToastProps> = ({
 }) => {
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
-  const timer = useRef<NodeJS.Timeout | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Show/hide toast based on visibility
   useEffect(() => {

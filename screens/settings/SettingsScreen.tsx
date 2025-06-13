@@ -6,17 +6,26 @@ import CogIcon from '../../assets/Settings.svg';
 import HeartIcon from '../../assets/Heart.svg';
 import FlameIcon from '../../assets/Vector.svg';
 import { styles } from './SettingsScreenStyles';
+import { useUserSettings } from '../../context/UserSettingsContext';
 const { width, height } = Dimensions.get('window');
 
-export const SettingsScreen = ({ navigate, updateCustomBackground, customBackground}) => {
-  const [darkMode, setDarkMode] = useState(true);
-  const [notifications, setNotifications] = useState(true);
-  const [dailyReminders, setDailyReminders] = useState(true);
-  const [metricUnits, setMetricUnits] = useState(true);
+export const SettingsScreen = ({ navigate }) => {
+  const { 
+    settings, 
+    loading, 
+    updatePreferences 
+  } = useUserSettings();
+  
   const [isPremium, setIsPremium] = useState(false);
+  
+  // Use settings from context, with fallbacks
+  const darkMode = settings?.darkMode ?? true;
+  const notifications = settings?.notifications ?? true;
+  const dailyReminders = settings?.dailyReminders ?? true;
+  const metricUnits = settings?.metricUnits ?? true;
+  const customBackground = settings?.customBackground ?? null;
 
   const pickImage = async () => {
-    
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -25,7 +34,11 @@ export const SettingsScreen = ({ navigate, updateCustomBackground, customBackgro
     });
     
     if (!result.canceled) {
-      updateCustomBackground(result.assets[0].uri);
+      try {
+        await updatePreferences({ customBackground: result.assets[0].uri });
+      } catch (error) {
+        Alert.alert('Error', 'Failed to update background. Please try again.');
+      }
     }
   };
 
@@ -38,7 +51,13 @@ export const SettingsScreen = ({ navigate, updateCustomBackground, customBackgro
         { 
           text: 'Remove', 
           style: 'destructive',
-          onPress: () => updateCustomBackground(null)
+          onPress: async () => {
+            try {
+              await updatePreferences({ customBackground: null });
+            } catch (error) {
+              Alert.alert('Error', 'Failed to remove background. Please try again.');
+            }
+          }
         }
       ]
     );
@@ -70,13 +89,19 @@ export const SettingsScreen = ({ navigate, updateCustomBackground, customBackgro
         { 
           text: 'Reset', 
           style: 'destructive',
-          onPress: () => {
-            setDarkMode(true);
-            setNotifications(true);
-            updateCustomBackground(null);
-            setDailyReminders(true);
-            setMetricUnits(true);
-            Alert.alert('Settings Reset', 'All settings have been reset to default values.');
+          onPress: async () => {
+            try {
+              await updatePreferences({
+                darkMode: true,
+                notifications: true,
+                customBackground: null,
+                dailyReminders: true,
+                metricUnits: true
+              });
+              Alert.alert('Settings Reset', 'All settings have been reset to default values.');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to reset settings. Please try again.');
+            }
           } 
         }
       ]
@@ -137,7 +162,7 @@ export const SettingsScreen = ({ navigate, updateCustomBackground, customBackgro
           {renderSettingItem('theme-light-dark', 'Dark Mode', (
             <Switch
               value={darkMode}
-              onValueChange={setDarkMode}
+              onValueChange={(value) => updatePreferences({ darkMode: value })}
               trackColor={{ false: '#3e3e3e', true: '#FF9500' }}
               thumbColor={darkMode ? '#fff' : '#f4f3f4'}
             />
@@ -164,7 +189,7 @@ export const SettingsScreen = ({ navigate, updateCustomBackground, customBackgro
           {renderSettingItem('bell', 'Push Notifications', (
             <Switch
               value={notifications}
-              onValueChange={setNotifications}
+              onValueChange={(value) => updatePreferences({ notifications: value })}
               trackColor={{ false: '#3e3e3e', true: '#FF9500' }}
               thumbColor={notifications ? '#fff' : '#f4f3f4'}
             />
@@ -172,7 +197,7 @@ export const SettingsScreen = ({ navigate, updateCustomBackground, customBackgro
           {renderSettingItem('calendar-clock', 'Daily Reminders', (
             <Switch
               value={dailyReminders}
-              onValueChange={setDailyReminders}
+              onValueChange={(value) => updatePreferences({ dailyReminders: value })}
               trackColor={{ false: '#3e3e3e', true: '#FF9500' }}
               thumbColor={dailyReminders ? '#fff' : '#f4f3f4'}
             />
@@ -182,7 +207,7 @@ export const SettingsScreen = ({ navigate, updateCustomBackground, customBackgro
           {renderSettingItem('weight', 'Use Metric Units', (
             <Switch
               value={metricUnits}
-              onValueChange={setMetricUnits}
+              onValueChange={(value) => updatePreferences({ metricUnits: value })}
               trackColor={{ false: '#3e3e3e', true: '#FF9500' }}
               thumbColor={metricUnits ? '#fff' : '#f4f3f4'}
             />

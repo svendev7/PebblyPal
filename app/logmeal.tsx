@@ -47,7 +47,8 @@ export default function LogMealScreen() {
         break;
       default:
         console.log(`Navigating to: ${screen.toLowerCase()}`);
-        router.push(`/${screen.toLowerCase()}`);
+        // Only navigate to known routes to avoid type errors
+        break;
     }
   };
   

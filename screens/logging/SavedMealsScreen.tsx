@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react"
 import { View, Text, TouchableOpacity, FlatList, StyleSheet, Dimensions, Modal, Image, ActivityIndicator } from "react-native"
 import { MaterialCommunityIcons } from "@expo/vector-icons"
 import { auth } from "../../config/firebase.client"
-import { getSavedMealsByUserId, deleteMeal, Meal, updateMeal } from "../../services/mealService"
+import { useSavedItems } from "../../context/SavedItemsContext"
 
 const { width, height } = Dimensions.get("window")
 
@@ -25,16 +25,8 @@ interface SavedMealsScreenProps {
 }
 
 const SavedMealsScreen: React.FC<SavedMealsScreenProps> = ({ onClose, onSelectMeal }) => {
-  const [savedMeals, setSavedMeals] = useState<SavedMeal[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { meals, loading, error, deleteItem, refreshData } = useSavedItems()
   const [visible, setVisible] = useState(true)
-  
-  useEffect(() => {
-    if (visible) {
-      fetchSavedMeals()
-    }
-  }, [visible])
   
   useEffect(() => {
     setVisible(true)
@@ -43,38 +35,17 @@ const SavedMealsScreen: React.FC<SavedMealsScreenProps> = ({ onClose, onSelectMe
     }
   }, [])
 
-  const fetchSavedMeals = async () => {
-    try {
-      setLoading(true)
-      const currentUser = auth.currentUser
-      
-      if (!currentUser) {
-        throw new Error('User not authenticated')
-      }
-      
-      const meals = await getSavedMealsByUserId(currentUser.uid)
-      
-      // Transform Firestore meals to SavedMeal format
-      const transformedMeals = meals.map(meal => ({
-        id: meal.id,
-        name: meal.mealName,
-        protein: meal.protein,
-        carbs: meal.carbs,
-        fat: meal.fat,
-        calories: meal.calories,
-        imageUrl: meal.imageUrl || 'https://via.placeholder.com/80',
-        lastUsed: meal.lastUsed ? formatLastUsed(meal.lastUsed) : undefined
-      }))
-      
-      setSavedMeals(transformedMeals)
-      setError(null)
-    } catch (err) {
-      console.error('Error fetching saved meals:', err)
-      setError('Failed to load saved meals')
-    } finally {
-      setLoading(false)
-    }
-  }
+  // Transform saved items to SavedMeal format
+  const savedMeals = meals.map(meal => ({
+    id: meal.id,
+    name: meal.name,
+    protein: meal.protein,
+    carbs: meal.carbs,
+    fat: meal.fat,
+    calories: meal.calories,
+    imageUrl: meal.imageUrl || 'https://via.placeholder.com/80',
+    lastUsed: meal.lastUsed ? formatLastUsed(meal.lastUsed) : undefined
+  }))
 
   const formatLastUsed = (timestamp: any): string => {
     if (!timestamp) return ''
@@ -97,11 +68,11 @@ const SavedMealsScreen: React.FC<SavedMealsScreenProps> = ({ onClose, onSelectMe
 
   const handleDeleteMeal = async (id: string) => {
     try {
-      await deleteMeal(id)
-      setSavedMeals(savedMeals.filter((meal) => meal.id !== id))
+      await deleteItem(id)
+      // The context will automatically update the meals array
     } catch (err) {
       console.error('Error deleting meal:', err)
-      setError('Failed to delete meal')
+      // Context handles error state
     }
   }
 
@@ -150,7 +121,7 @@ const SavedMealsScreen: React.FC<SavedMealsScreenProps> = ({ onClose, onSelectMe
             <View style={styles.errorContainer}>
               <MaterialCommunityIcons name="alert-circle" size={24} color="#FF3B30" />
               <Text style={styles.errorText}>{error}</Text>
-              <TouchableOpacity onPress={fetchSavedMeals} style={styles.retryButton}>
+              <TouchableOpacity onPress={refreshData} style={styles.retryButton}>
                 <Text style={styles.retryText}>Retry</Text>
               </TouchableOpacity>
             </View>

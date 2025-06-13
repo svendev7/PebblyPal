@@ -25,9 +25,11 @@ import {
 } from "react-native"
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { MaterialCommunityIcons, Ionicons } from "@expo/vector-icons"
+import { useRouter } from 'expo-router'
 import { auth, db } from "../../../config/firebase.client"
-import { addMeal, clearAllCartItems, forceResetAllCartItems, Meal, FoodItem as MealServiceFoodItem } from "../../../services/mealService"
 import { generateMealName } from "../../../services/aiService"
+import { useLoggedItems } from "../../../context/LoggedItemsContext"
+import { useSavedItems } from "../../../context/SavedItemsContext"
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore"
 import Toast from 'react-native-toast-message'
 import * as ImagePicker from 'expo-image-picker'
@@ -67,11 +69,19 @@ const SuccessPopup = ({ visible, message, onDismiss }) => {
 };
 
 const MealReviewScreen: React.FC<MealReviewScreenProps> = ({ navigation, route }) => {
+  const router = useRouter();
+  
   // Use State to track whether the heavy components have been rendered
   const [isReady, setIsReady] = useState(false);
 
   // Use Cart Context
   const { cartItems, itemCount, updateQuantity, removeFromCart, clearCart: contextClearCart, totalMacros: contextTotalMacros } = useCart();
+  
+  // Use LoggedItems Context for logging meals
+  const { addItem: addLoggedItem } = useLoggedItems();
+  
+  // Use SavedItems Context for saving meals to Meals tab
+  const { addItem: addSavedItem } = useSavedItems();
   
   // Make transition immediate without waiting for InteractionManager
   useEffect(() => {
@@ -297,10 +307,9 @@ const MealReviewScreen: React.FC<MealReviewScreenProps> = ({ navigation, route }
         (currentCartItems.length > 0 && currentCartItems[0].name ? 
           currentCartItems[0].name : 'Logged Meal');
 
-      // Save the meal first (this is the main operation)
-      await addMeal({
-        userId: auth.currentUser.uid,
-        mealName: effectiveMealName,
+      // Save the meal using the new LoggedItems context
+      await addLoggedItem({
+        name: effectiveMealName,
         protein: roundedProtein,
         carbs: roundedCarbs,
         fat: roundedFat,
@@ -310,31 +319,36 @@ const MealReviewScreen: React.FC<MealReviewScreenProps> = ({ navigation, route }
         sodium: Math.round(currentCartItems.reduce((sum, item) => sum + (item.sodium || 0) * (item.amount / 100), 0)),
         date: currentDate,
         loggedTime: new Date().toISOString(),
-        foods: currentCartItems.map(item => ({
-          id: item.originalItemId || item.id,
-          name: item.name,
-          protein: item.protein,
-          carbs: item.carbs,
-          fat: item.fat,
-          calories: item.calories,
-          sodium: item.sodium || 0,
-          sugar: item.sugar || 0,
-          fibers: item.fibers || 0,
-          amount: item.amount || 100,
-          unit: item.unit || 'g'
-        })),
+        amount: 1,
+        unit: 'serving',
+        sourceType: 'meal',
+        sourceId: isSavingMeal ? `custom-${Date.now()}` : undefined,
         imageUrl: mealImage,
-        isCustom: isSavingMeal,
-        isLogged: true // Ensure this is set to true for the meal viewer
+        notes: isSavingMeal ? `Saved meal containing: ${currentCartItems.map(item => item.name).join(', ')}` : undefined
       });
+
+      // If saving meal, also save to SavedItems context so it appears in Meals tab
+      if (isSavingMeal) {
+        await addSavedItem({
+          name: effectiveMealName,
+          itemType: 'meal',
+          protein: roundedProtein,
+          carbs: roundedCarbs,
+          fat: roundedFat,
+          calories: roundedCalories,
+          sugar: Math.round(currentCartItems.reduce((sum, item) => sum + (item.sugar || 0) * (item.amount / 100), 0) * 10) / 10,
+          fibers: Math.round(currentCartItems.reduce((sum, item) => sum + (item.fibers || 0) * (item.amount / 100), 0) * 10) / 10,
+          sodium: Math.round(currentCartItems.reduce((sum, item) => sum + (item.sodium || 0) * (item.amount / 100), 0)),
+          servingSize: 1,
+          servingUnit: 'serving',
+          imageUrl: mealImage || "https://images.unsplash.com/photo-1567620905732-2d1ec7ab7445?q=80&w=400",
+          isFavorite: false,
+          isUserCreated: true
+        });
+      }
 
       // Clear the cart in context immediately (instant UI feedback)
       contextClearCart();
-      
-      // Clear cart in Firebase asynchronously (don't wait for it)
-      forceResetAllCartItems(auth.currentUser.uid).catch(error => {
-        console.error("Error clearing cart in Firestore:", error);
-      });
 
       showSuccess(isSavingMeal ? 'Meal Logged and Saved' : 'Meal Logged Successfully');
       
@@ -342,9 +356,9 @@ const MealReviewScreen: React.FC<MealReviewScreenProps> = ({ navigation, route }
       const onMealLogged = route?.params?.onMealLogged;
       if (onMealLogged && typeof onMealLogged === 'function') {
         onMealLogged(); // This will navigate to home
-      } else if (navigation && typeof navigation.navigate === 'function') {
-        // Fallback: navigate to home directly
-        navigation.navigate('home');
+      } else {
+        // Fallback: navigate to home directly using expo-router
+        router.push('/');
       }
 
     } catch (error) {

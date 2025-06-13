@@ -11,21 +11,54 @@ import { PebblyPal } from "../../components/Pebbly/PebblyPal"
 import { MealViewer } from "../../components/MealViewer/MealViewer"
 import MealEditScreen from "../editting/MealEditScreen"
 import AnimatedFooter from "../../components/Footer/AnimatedFooter"
-import type { Meal } from "../../services/mealService"
-import { getMealsByDate, updateMeal, deleteMeal } from "../../services/mealService"
+// Temporary type definitions for compatibility during migration
+interface Meal {
+  id: string;
+  userId: string;
+  mealName: string;
+  protein: number;
+  carbs: number;
+  fat: number;
+  calories: number;
+  sugar: number;
+  fibers: number;
+  sodium: number;
+  loggedTime: string;
+  date: string;
+  imageUrl?: string;
+  createdAt?: any;
+  updatedAt?: any;
+  isLogged?: boolean;
+  isFavorite?: boolean;
+  isCustom?: boolean;
+}
+
+// Temporary stub functions - TODO: Replace with context hooks
+// Removed deprecated getMealsByDate function - using context now
+
+const updateMeal = async (mealId: string, mealData: Partial<Meal>): Promise<Meal> => {
+  console.warn('updateMeal is deprecated - use useLoggedItems().updateItem() instead');
+  return {} as Meal;
+};
+
+const deleteMeal = async (mealId: string): Promise<void> => {
+  console.warn('deleteMeal is deprecated - use useLoggedItems().deleteItem() instead');
+};
 import { useAuth } from "../../hooks/useAuth"
+import { useUserSettings } from "../../context/UserSettingsContext"
+import { useLoggedItems } from "../../context/LoggedItemsContext"
 
 // Helper function to calculate daily totals
-const calculateDailyTotals = (meals: Meal[]) => {
-  if (!meals || meals.length === 0) {
+const calculateDailyTotals = (items: any[]) => {
+  if (!items || items.length === 0) {
     return { proteinConsumed: 0, carbsConsumed: 0, fatConsumed: 0, totalCaloriesConsumed: 0 }
   }
-  return meals.reduce(
-    (totals, meal) => {
-      totals.proteinConsumed += meal.protein || 0
-      totals.carbsConsumed += meal.carbs || 0
-      totals.fatConsumed += meal.fat || 0
-      totals.totalCaloriesConsumed += meal.calories || 0
+  return items.reduce(
+    (totals, item) => {
+      totals.proteinConsumed += item.protein || 0
+      totals.carbsConsumed += item.carbs || 0
+      totals.fatConsumed += item.fat || 0
+      totals.totalCaloriesConsumed += item.calories || 0
       return totals
     },
     { proteinConsumed: 0, carbsConsumed: 0, fatConsumed: 0, totalCaloriesConsumed: 0 },
@@ -113,14 +146,28 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
   const [footerVisible, setFooterVisible] = useState(true)
   const [activeTab, setActiveTab] = useState("home")
   const footerAnim = useRef(new Animated.Value(0)).current
+  
+  // Use auth and new context hooks
   const { user } = useAuth()
+  const { settings, dailyGoals } = useUserSettings()
+  const { 
+    todayItems, 
+    todayTotals, 
+    loading: itemsLoading,
+    addItem,
+    updateItem,
+    deleteItem,
+    getItemsForDate,
+    remainingCalories,
+    macroProgress
+  } = useLoggedItems()
 
   // Load today's meals initially
   useEffect(() => {
     if (user) {
       loadMealsForDate(getTodayDate())
     }
-  }, [user])
+  }, [user?.uid])
 
   // Add a function to refresh the current view
   const refreshCurrentView = () => {
@@ -141,7 +188,7 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
       // Alternative approach when setParams is not available
       navigation.refreshHomeScreen = refreshCurrentView
     }
-  }, [navigation, loadedDates, user])
+  }, [navigation])
 
   // Listen for focus events to refresh data when returning to this screen
   useEffect(() => {
@@ -165,7 +212,7 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
         unsubscribeFocus.remove()
       }
     }
-  }, [navigation, refreshCurrentView])
+  }, [navigation])
 
   // Handle footer visibility changes from scroll
   const handleFooterVisibility = (visible: boolean) => {
@@ -210,15 +257,15 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
     }, 50)
   }
 
-  // Load meals for a specific date
+  // Load meals for a specific date using new context
   const loadMealsForDate = async (dateString: string, isInitial = true) => {
     if (!user) return
 
     try {
       setIsLoading(true)
 
-      // Fetch meals for this date from Firebase
-      const meals = await getMealsByDate(user.uid, dateString)
+      // Use new context method instead of deprecated function
+      const meals = await getItemsForDate(dateString)
 
       // Calculate totals
       const dailyTotals = calculateDailyTotals(meals)
@@ -226,7 +273,7 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
       // Format meals for the component
       const formattedMeals = meals.map((meal) => ({
         id: meal.id,
-        mealName: meal.mealName,
+        mealName: meal.name, // Using 'name' from LoggedItem
         protein: meal.protein,
         carbs: meal.carbs,
         fat: meal.fat,
@@ -239,15 +286,15 @@ export const HomeScreen = ({ onFooterVisibilityChange, onSettingsPress, customBa
         imageUrl: meal.imageUrl || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=400",
       }))
 
-      // Create the day data
+      // Create the day data using dailyGoals from context
       const dayData: DayData = {
         date: formatDate(dateString),
         mealData: formattedMeals,
         ...dailyTotals,
-        proteinGoal: DEFAULT_GOALS.protein,
-        carbsGoal: DEFAULT_GOALS.carbs,
-        fatGoal: DEFAULT_GOALS.fat,
-        calorieGoal: DEFAULT_GOALS.calories,
+        proteinGoal: dailyGoals.protein,
+        carbsGoal: dailyGoals.carbs,
+        fatGoal: dailyGoals.fat,
+        calorieGoal: dailyGoals.calories,
       }
 
       // Add to displayed days

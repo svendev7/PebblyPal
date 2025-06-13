@@ -22,15 +22,13 @@ export default function SavedMeals() {
     // After selecting a meal, go back to the previous screen
     console.log('Selected meal:', meal);
     
-    // Determine which screen to return to based on params or default to logmeal
-    const returnTo = params.returnTo || 'logmeal';
-    router.push(`/${returnTo}`);
+    // Use router.back() for proper navigation
+    router.back();
   };
   
   const handleClose = () => {
-    // Determine which screen to return to based on params or default to logmeal
-    const returnTo = params.returnTo || 'logmeal';
-    router.push(`/${returnTo}`);
+    // Use router.back() for proper navigation
+    router.back();
   };
   
   return (

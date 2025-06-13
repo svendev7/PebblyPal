@@ -1,9 +1,33 @@
 import React, { createContext, useState, useContext, ReactNode, useMemo, useCallback } from 'react';
-import { FoodItem as MealServiceFoodItem, Meal } from '../services/mealService'; // Adjust path as needed
 
-// Define the shape of a food item within the meal service context
-// We use MealServiceFoodItem to avoid naming conflicts
-interface FoodItem extends MealServiceFoodItem {}
+// Define the shape of a food item for cart context
+interface FoodItem {
+  id: string;
+  name: string;
+  protein: number;
+  carbs: number;
+  fat: number;
+  calories: number;
+  sodium?: number;
+  sugar?: number;
+  fibers?: number;
+  amount?: number;
+  unit?: string;
+}
+
+// Define meal interface for cart context
+interface Meal {
+  id: string;
+  name?: string;
+  mealName?: string;
+  protein: number;
+  carbs: number;
+  fat: number;
+  calories: number;
+  sodium?: number;
+  sugar?: number;
+  fibers?: number;
+}
 
 // Define the shape of a cart item
 export interface CartItem extends FoodItem {
