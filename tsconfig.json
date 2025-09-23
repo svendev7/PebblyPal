@@ -1,40 +1,4 @@
 {
-  "extends": "expo/tsconfig.base",
-  "compilerOptions": {
-    "strict": false,
-    "baseUrl": ".",
-    "paths": {
-      "@assets/*": [
-        "assets/*"
-      ],
-      "@components/*": [
-        "components/*"
-      ],
-      "@screens/*": [
-        "screens/*"
-      ],
-      "@services/*": [
-        "services/*"
-      ],
-      "@hooks/*": [
-        "hooks/*"
-      ],
-      "@context/*": [
-        "context/*"
-      ],
-      "@types/*": [
-        "types/*"
-      ],
-      "@config/*": [
-        "config/*"
-      ]
-    }
-  },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    "svg.d.ts",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
-  ]
+  "compilerOptions": {},
+  "extends": "expo/tsconfig.base"
 }
