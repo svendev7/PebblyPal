@@ -1,79 +1,94 @@
-import React, { useRef, useState } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { ImageBackground, StyleSheet, FlatList, View, Text, Dimensions } from 'react-native';
-import Footer, { FooterRef } from './components/Footer';
+// src/frontend/Home.tsx
+import React, { useMemo } from 'react';
+import { Dimensions, ImageBackground, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue,
+  useDerivedValue,
+  useAnimatedStyle,
+  withTiming,
+  Easing,
+  clamp,
+} from 'react-native-reanimated';
+import CRFooter from './components/CRFooter';
 
-const { width: screenWidth } = Dimensions.get('window');
-
-// Sample page data - replace with your actual screens
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const PAGES = [
-  { id: 'shop', title: 'Shop', color: '#e74c3c' },
-  { id: 'cards', title: 'Cards', color: '#3498db' },
-  { id: 'battle', title: 'Battle', color: '#f39c12' },
-  { id: 'clan', title: 'Clan', color: '#2ecc71' },
-  { id: 'events', title: 'Events', color: '#9b59b6' },
+  { key: 'shop', title: 'Shop', color: '#e74c3c' },
+  { key: 'cards', title: 'Cards', color: '#3498db' },
+  { key: 'battle', title: 'Battle', color: '#f39c12' },
+  { key: 'clan', title: 'Clan', color: '#2ecc71' },
+  { key: 'events', title: 'Events', color: '#9b59b6' },
 ];
+const COUNT = PAGES.length;
+const START_INDEX = 2;
+
+// Tunables to match Clash Royale feel
+const SNAP_DURATION_MS = 260;                // crisp but not abrupt
+const SNAP_EASING = Easing.bezier(0.20, 0.00, 0.00, 1.00); // strong ease-out
+const VELOCITY_COEF = 0.20;                  // how far velocity projects (pages/sec -> pages)
+const EDGE_RESISTANCE = 0.35;                // damping past edges
 
 export default function Home() {
-  const [currentPage, setCurrentPage] = useState(2); // Start at Battle (middle)
-  const flatListRef = useRef<FlatList>(null);
-  const footerRef = useRef<FooterRef>(null);
+  const translateX = useSharedValue(-START_INDEX * SCREEN_WIDTH);
+  const dragStartX = useSharedValue(translateX.value);
 
-  // Handle manual scroll from user
-  const handleScroll = (event: any) => {
-    const scrollPosition = event.nativeEvent.contentOffset.x;
-    const pageIndex = Math.round(scrollPosition / screenWidth);
-    
-    if (pageIndex !== currentPage) {
-      setCurrentPage(pageIndex);
-      // Sync footer without triggering scroll
-      footerRef.current?.setSelectedIndex(pageIndex);
-    }
+  // Fractional page progress (0..COUNT-1)
+  const progress = useDerivedValue(() => {
+    const raw = -translateX.value / SCREEN_WIDTH;
+    return clamp(raw, 0, COUNT - 1);
+  }, []);
+
+  const pagerStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  const goTo = (index: number) => {
+    const i = Math.max(0, Math.min(COUNT - 1, index));
+    const x = -i * SCREEN_WIDTH;
+    translateX.value = withTiming(x, { duration: SNAP_DURATION_MS, easing: SNAP_EASING });
   };
 
-  // Handle tab press from footer
-  const handleTabPress = (index: number) => {
-    setCurrentPage(index);
-    flatListRef.current?.scrollToIndex({ index, animated: true });
-  };
+  const minX = -(COUNT - 1) * SCREEN_WIDTH;
+  const maxX = 0;
 
-  // Render each page
-  const renderPage = ({ item, index }: { item: any; index: number }) => (
-    <View style={[styles.page, { backgroundColor: item.color }]}>
-      <Text style={styles.pageTitle}>{item.title}</Text>
-      <Text style={styles.pageSubtitle}>Page {index + 1}</Text>
-      
-      {/* Add your actual page content here */}
-      {item.id === 'battle' && (
-        <View style={styles.battleContent}>
-          <Text style={styles.battleText}>⚔️ Ready for Battle! ⚔️</Text>
-        </View>
-      )}
-      
-      {item.id === 'shop' && (
-        <View style={styles.shopContent}>
-          <Text style={styles.shopText}>🛒 Welcome to Shop</Text>
-        </View>
-      )}
-      
-      {item.id === 'cards' && (
-        <View style={styles.cardsContent}>
-          <Text style={styles.cardsText}>🃏 Your Card Collection</Text>
-        </View>
-      )}
-      
-      {item.id === 'clan' && (
-        <View style={styles.clanContent}>
-          <Text style={styles.clanText}>👥 Clan Management</Text>
-        </View>
-      )}
-      
-      {item.id === 'events' && (
-        <View style={styles.eventsContent}>
-          <Text style={styles.eventsText}>🎉 Special Events</Text>
-        </View>
-      )}
-    </View>
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .onBegin(() => {
+          dragStartX.value = translateX.value;
+        })
+        .onUpdate((e) => {
+          // Compute raw position from drag origin + translation
+          let next = dragStartX.value + e.translationX;
+
+          // Apply soft resistance beyond bounds to avoid hard stop
+          if (next > maxX) {
+            const over = next - maxX;
+            next = maxX + over * EDGE_RESISTANCE;
+          } else if (next < minX) {
+            const over = next - minX;
+            next = minX + over * EDGE_RESISTANCE;
+          }
+
+          translateX.value = next;
+        })
+        .onEnd((e) => {
+          // Current fractional index
+          const current = -translateX.value / SCREEN_WIDTH;
+
+          // Velocity projection (points/sec -> pages via width) scaled by coefficient
+          const projected = current - (e.velocityX / 1000) * VELOCITY_COEF;
+
+          // Nearest target from position plus velocity influence
+          const target = Math.round(projected);
+
+          // Clamp and snap with crisp timing (no bounce)
+          const clamped = Math.max(0, Math.min(COUNT - 1, target));
+          const x = -clamped * SCREEN_WIDTH;
+          translateX.value = withTiming(x, { duration: SNAP_DURATION_MS, easing: SNAP_EASING });
+        }),
+    []
   );
 
   return (
@@ -82,116 +97,64 @@ export default function Home() {
       style={styles.container}
       resizeMode="cover"
     >
-      <FlatList
-        ref={flatListRef}
-        data={PAGES}
-        renderItem={renderPage}
-        keyExtractor={(item) => item.id}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={handleScroll}
-        initialScrollIndex={2} // Start at Battle
-        getItemLayout={(data, index) => ({
-          length: screenWidth,
-          offset: screenWidth * index,
-          index,
-        })}
-        onScrollToIndexFailed={(info) => {
-          console.warn('Scroll to index failed:', info);
-        }}
+      <GestureDetector gesture={pan}>
+        <Animated.View style={[styles.pager, { width: SCREEN_WIDTH * COUNT }, pagerStyle]}>
+          {PAGES.map((p) => (
+            <View key={p.key} style={[styles.page, { width: SCREEN_WIDTH, backgroundColor: p.color }]}>
+              <Text style={styles.title}>{p.title}</Text>
+              <Text style={styles.subtitle}>Page</Text>
+
+              {p.key === 'battle' && (
+                <View style={styles.card}>
+                  <Text style={styles.cardText}>⚔️ Ready for Battle! ⚔️</Text>
+                </View>
+              )}
+              {p.key === 'shop' && (
+                <View style={styles.card}>
+                  <Text style={styles.cardText}>🛒 Welcome to Shop</Text>
+                </View>
+              )}
+              {p.key === 'cards' && (
+                <View style={styles.card}>
+                  <Text style={styles.cardText}>🃏 Your Card Collection</Text>
+                </View>
+              )}
+              {p.key === 'clan' && (
+                <View style={styles.card}>
+                  <Text style={styles.cardText}>👥 Clan Management</Text>
+                </View>
+              )}
+              {p.key === 'events' && (
+                <View style={styles.card}>
+                  <Text style={styles.cardText}>🎉 Special Events</Text>
+                </View>
+              )}
+            </View>
+          ))}
+        </Animated.View>
+      </GestureDetector>
+
+      <CRFooter
+        progress={progress}
+        onTabPress={goTo}
+        height={Math.round(SCREEN_HEIGHT * 0.12)}
       />
-      
-      <Footer ref={footerRef} onTabPress={handleTabPress} />
-      <StatusBar style="auto" />
     </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000',
+  container: { flex: 1, backgroundColor: '#000' },
+  pager: { flex: 1, flexDirection: 'row' },
+  page: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 120 },
+  title: {
+    color: '#fff', fontSize: 32, fontWeight: 'bold', marginBottom: 16,
+    textShadowColor: 'rgba(0,0,0,0.5)', textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 4,
   },
-  page: {
-    width: screenWidth,
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: 120, // Space for footer
+  subtitle: { color: '#fff', fontSize: 18, opacity: 0.8, marginBottom: 32 },
+  card: {
+    alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)',
+    padding: 24, borderRadius: 16, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)',
   },
-  pageTitle: {
-    color: '#fff',
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    textShadowColor: 'rgba(0, 0, 0, 0.5)',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
-  },
-  pageSubtitle: {
-    color: '#fff',
-    fontSize: 18,
-    opacity: 0.8,
-    marginBottom: 32,
-  },
-  
-  // Page-specific content styles
-  battleContent: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    padding: 24,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  battleText: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  
-  shopContent: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    padding: 24,
-    borderRadius: 16,
-  },
-  shopText: {
-    color: '#fff',
-    fontSize: 18,
-  },
-  
-  cardsContent: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    padding: 24,
-    borderRadius: 16,
-  },
-  cardsText: {
-    color: '#fff',
-    fontSize: 18,
-  },
-  
-  clanContent: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    padding: 24,
-    borderRadius: 16,
-  },
-  clanText: {
-    color: '#fff',
-    fontSize: 18,
-  },
-  
-  eventsContent: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    padding: 24,
-    borderRadius: 16,
-  },
-  eventsText: {
-    color: '#fff',
-    fontSize: 18,
-  },
+  cardText: { color: '#fff', fontSize: 18, fontWeight: '600' },
 });
