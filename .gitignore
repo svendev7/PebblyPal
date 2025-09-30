@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+const ICON_NAMES = ['sports_esports', 'restaurant', 'home', 'bar_chart', 'settings'] as const;
+...
+const iconName = ICON_NAMES[i] as React.ComponentProps<typeof MaterialIcons>['name'];
+...
+<AnimatedIcon name={iconName} size={ICON_SIZE} style={iconStyle} />

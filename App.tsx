@@ -1,12 +1,12 @@
 // App.tsx
 import React from 'react';
 import { GestureHandlerRootView, gestureHandlerRootHOC } from 'react-native-gesture-handler';
-import Home from './src/frontend/Home';
+import MainContainer from './src/frontend/MainContainer';
 
 function AppInner() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <Home />
+      <MainContainer />
     </GestureHandlerRootView>
   );
 }
